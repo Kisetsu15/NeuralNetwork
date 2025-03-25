@@ -1,83 +1,62 @@
 ﻿namespace NeuralNetwork {
     public class NeuralNetwork {
         private readonly List<Layer> layers;
-        private readonly IHiddenFunction hiddenFunction;
-        private readonly IOutputFunction outputFunction;
-        private readonly Random random = new();
+        private readonly float learningRate;
 
-        private NeuralNetwork( List<int> layerSizes, IHiddenFunction hiddenFunction, IOutputFunction outputFunction ) {
+        public NeuralNetwork( List<int> layerSizes, IHiddenFunction hiddenFunction, IOutputFunction outputFunction, float learningRate = 0.1f ) {
+            this.learningRate = learningRate;
             layers = [];
-            this.hiddenFunction = hiddenFunction;
-            this.outputFunction = outputFunction;
 
-            for ( int i = 0; i < layerSizes.Count; i++ ) {
-                int numInputs = ( i == 0 ) ? 0 : layerSizes[i - 1];
-                layers.Add( new Layer.Builder()
-                    .WithNumNeurons(layerSizes[i])
-                    .WithNumInputsPerNeuron(numInputs)
-                    .WithFunction(hiddenFunction)
-                    .WithRandom(random)
-                    .Build()
-                );
+            Random rand = new(42); // Fixed seed for reproducibility
+
+            for ( int i = 0; i < layerSizes.Count - 1; i++ ) {
+                layers.Add(new Layer(layerSizes[i], layerSizes[i + 1], rand, hiddenFunction, outputFunction));
             }
         }
 
-        public void Forwardpropagate( List<float> inputs ) {
-            for ( int i = 0; i < layers.Count; i++ ) {
-                var layer = layers[i];
-                if ( i == 0 ) {
-                    for ( int j = 0; j < inputs.Count; j++ ) {
-                        layer.Neurons[j].SetInput(inputs[j]);
-                    }
-                } else {
-                    var prevLayerOutputs = layers[i - 1].Neurons.Select(neuron => neuron.GetRawOutput()).ToList();
-                    foreach ( var neuron in layer.Neurons ) {
-                        neuron.SetInputs(prevLayerOutputs);
-                    }
-                }
+        public List<float> Forward( List<float> inputs ) {
+            foreach ( var layer in layers ) {
+                inputs = layer.Forward(inputs);
+            }
+            return inputs;
+        }
+
+        public void Backpropagate( List<float> expectedOutputs ) {
+            List<float> errors = layers[^1].GetOutputErrors(expectedOutputs);
+
+            for ( int i = layers.Count - 1; i >= 0; i-- ) {
+                errors = layers[i].Backpropagate(errors, learningRate);
             }
         }
 
-        public void Backpropagate( List<float> expectedOutputs, float learningRate ) {
-            var outputLayer = layers[^1];
-            List<float> outputErrors = [.. outputLayer.Neurons.Select(( neuron, i ) => expectedOutputs[i] - neuron.GetRawOutput())];
+        public void Train( List<List<float>> inputs, List<List<float>> outputs, int epochs ) {
+            for ( int epoch = 0; epoch < epochs; epoch++ ) {
+                float totalError = 0;
 
-            List<float> nextLayerErrors = outputErrors;
-            for ( int i = layers.Count - 1; i > 0; i-- ) {
-                var layer = layers[i];
-                var prevLayer = layers[i - 1];
-                List<float> currentLayerErrors = new (prevLayer.Neurons.Count);
+                for ( int i = 0; i < inputs.Count; i++ ) {
+                    List<float> output = Forward(inputs[i]);
+                    Backpropagate(outputs[i]);
 
-                for ( int l = 0; l < prevLayer.Neurons.Count; l++ ) {
-                    currentLayerErrors.Add(outputErrors[0]);
+                    totalError += MathF.Abs(outputs[i][0] - output[0]); // XOR has single output
                 }
 
-                for ( int j = 0; j < layer.Neurons.Count; j++ ) {
-                    var neuron = layer.Neurons[j];
-                    float delta = nextLayerErrors[j] * hiddenFunction.Derivative(neuron.GetRawOutput());
-                    for ( int k = 0; k < neuron.Weights.Count; k++ ) {                      
-                        currentLayerErrors[k] += neuron.Weights[k] * delta;
-                        neuron.Weights[k] += learningRate * delta * neuron.Inputs[k];
-                    }
-                    neuron.Bias += learningRate * delta;
+                if ( epoch % 1000 == 0 ) {
+                    Console.WriteLine($"Epoch {epoch}, Accuracy: {100f - totalError}");
                 }
-                nextLayerErrors = currentLayerErrors;
             }
         }
-
-        public List<float> GetOutput(out List<float> activatedOutput) {
-            List<float> output = [.. layers[^1].Neurons.Select(neuron => neuron.GetRawOutput())];
-            activatedOutput = outputFunction.Compute(output);
-            return output!;
-        }
-
 
         public class Builder {
             private List<int> layerSizes = [];
-            private IHiddenFunction? hiddenFunction;
-            private IOutputFunction? outputFunction;
+            private float learningRate;
+            private IHiddenFunction hiddenFunction = new Sigmoid();      // Default Hidden function ReLu
+            private IOutputFunction outputFunction = new Softmax();   // Default Output function Softmax
             public Builder WithLayerSizes( List<int> layerSizes ) {
                 this.layerSizes = layerSizes;
+                return this;
+            }
+            public Builder WithLearningRate( float rate ) {
+                this.learningRate = rate;
                 return this;
             }
             public Builder WithHiddenFunction( IHiddenFunction hiddenFunction ) {
@@ -88,7 +67,8 @@
                 this.outputFunction = outputFunction;
                 return this;
             }
-            public NeuralNetwork Build() => new(layerSizes, hiddenFunction!, outputFunction!);
+            public NeuralNetwork Build() => new(layerSizes, hiddenFunction, outputFunction, learningRate);
         }
     }
+
 }

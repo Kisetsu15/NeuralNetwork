@@ -2,44 +2,30 @@
     public class Layer {
         public List<Neuron> Neurons { get; private set; }
 
-        private Layer( int numNeurons, int numInputsPerNeuron, IHiddenFunction function, Random random ) {
+        public Layer( int numInputs, int numNeurons, Random rand, IHiddenFunction hiddenFunction, IOutputFunction outputFunction ) {
             Neurons = [];
 
             for ( int i = 0; i < numNeurons; i++ ) {
-                var neuron = new Neuron.Builder()
-                    .WithInputs(new float[numInputsPerNeuron].ToList()) 
-                    .WithWeights([.. Enumerable.Range(0, numInputsPerNeuron).Select(_ => (float)( random.NextDouble() * 2 - 1 ))])
-                    .WithBias((float)( random.NextDouble() * 2 - 1 )) 
-                    .WithFunction(function)
-                    .Build();
-                Neurons.Add(neuron);
+                Neurons.Add(new Neuron(numInputs, rand, hiddenFunction, outputFunction));
             }
         }
 
-        public class Builder {
-            private int numNeurons;
-            private int numInputsPerNeuron;
-            private IHiddenFunction? function;
-            private Random? random;
+        public List<float> Forward( List<float> inputs ) {
+            return Neurons.Select(neuron => neuron.Forward(inputs)).ToList();
+        }
 
-            public Builder WithNumNeurons( int numNeurons ) {
-                this.numNeurons = numNeurons;
-                return this;
+        public List<float> GetOutputErrors( List<float> expectedOutputs ) {
+            return [.. Neurons.Select(( neuron, i ) => expectedOutputs[i] - neuron.Output)];
+        }
+
+        public List<float> Backpropagate( List<float> nextLayerErrors, float learningRate ) {
+            List<float> errors = [.. new float[Neurons[0].Weights.Count]];
+
+            for ( int i = 0; i < Neurons.Count; i++ ) {
+                Neurons[i].Backpropagate(nextLayerErrors[i], learningRate, errors);
             }
-            public Builder WithNumInputsPerNeuron( int numInputsPerNeuron ) {
-                this.numInputsPerNeuron = numInputsPerNeuron;
-                return this;
-            }
-            public Builder WithFunction( IHiddenFunction function ) {
-                this.function = function;
-                return this;
-            }
-            public Builder WithRandom( Random random ) {
-                this.random = random;
-                return this;
-            }
-            public Layer Build() => new(numNeurons, numInputsPerNeuron, function!, random!);           
+
+            return errors;
         }
     }
-
 }

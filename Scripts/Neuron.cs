@@ -1,68 +1,38 @@
-﻿namespace NeuralNetwork {
+﻿
+namespace NeuralNetwork {
     public class Neuron {
-        public List<float> Inputs { get; private set; }
         public List<float> Weights { get; private set; }
-        public float Bias { get; set; }
+        public float Bias { get; private set; }
+        public float Output { get; private set; }
+        private List<float> Inputs = [];
+        private IHiddenFunction HiddenFunction = new Sigmoid();
 
-        private readonly IHiddenFunction function;
-        private float? output;
+        public Neuron( int numInputs, Random rand, IHiddenFunction hiddenFunction, IOutputFunction outputFunciton ) {
+            Weights = [];
 
-        private Neuron( List<float> inputs, List<float> weights, float bias, IHiddenFunction function ) {
+            for ( int i = 0; i < numInputs; i++ ) {
+                Weights.Add((float)( rand.NextDouble() * 2 - 1 )); // Random weight (-1 to 1)
+            }
+
+            Bias = (float)( rand.NextDouble() * 2 - 1 );
+        }
+
+        public float Forward( List<float> inputs ) {
             Inputs = inputs;
-            Weights = weights;
-            Bias = bias;
-            this.function = function;
+            float sum = Inputs.Zip(Weights, ( input, weight ) => input * weight).Sum() + Bias;
+            Output = HiddenFunction.Activate(sum);
+            return Output;
         }
 
-        public void SetInputs( List<float> inputs ) {
-            Inputs = inputs;
-        }
-        
-        public void SetInput( float input ) {
-            Inputs = [input];
-        }
+        public void Backpropagate( float error, float learningRate, List<float> prevLayerErrors ) {
+            float delta = error * HiddenFunction.Derivative(Output);
 
-        public float Calculate() {
-            float sum = 0;
+            for ( int i = 0; i < Weights.Count; i++ ) {
+                prevLayerErrors[i] += Weights[i] * delta;
+                Weights[i] += learningRate * delta * Inputs[i];
+            }
 
-            for ( int i = 0; i < Inputs.Count; i++ ) {
-                if ( Weights.Count == 0 ) {
-                    sum += Inputs[i];
-                    continue;
-                }
-                sum += Inputs[i] * Weights[i];
-            }
-            return function.Activate(sum + Bias);
-        }
-
-        public float GetRawOutput() {
-            output ??= Calculate();
-            return (float) output!;
-        }
-
-        public class Builder {
-            private List<float> inputs = [];
-            private List<float> weights = [];
-            private float bias = 0;
-            private IHiddenFunction? function;
-
-            public Builder WithInputs( List<float> inputs ) {
-                this.inputs = inputs;
-                return this;
-            }
-            public Builder WithWeights( List<float> weights ) {
-                this.weights = weights;
-                return this;
-            }
-            public Builder WithBias( float bias ) {
-                this.bias = bias;
-                return this;
-            }
-            public Builder WithFunction( IHiddenFunction function ) {
-                this.function = function;
-                return this;
-            }
-            public Neuron Build() => new(inputs, weights, bias, function!);
+            Bias += learningRate * delta;
         }
     }
 }
